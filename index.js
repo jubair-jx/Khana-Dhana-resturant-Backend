@@ -33,6 +33,26 @@ async function run() {
     const menuCollection = client.db("bistro").collection("menu");
     const reviewCollection = client.db("bistro").collection("review");
     const cartCollection = client.db("bistro").collection("cart");
+    const userCollection = client.db("bistro").collection("user");
+
+    app.get("/users", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result);
+    });
+
+    //user api
+    app.post("/user", async (req, res) => {
+      const user = req.body;
+      console.log(user);
+      const query = { email: user.email };
+      const existUser = await userCollection.findOne(query);
+      console.log("exist", existUser);
+      if (existUser) {
+        return res.send({ message: "User Already exist" });
+      }
+      const result = userCollection.insertOne(user);
+      res.send(result);
+    });
 
     app.get("/menu", async (req, res) => {
       const result = await menuCollection.find().toArray();
