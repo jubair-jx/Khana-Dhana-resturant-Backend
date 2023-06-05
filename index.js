@@ -60,7 +60,27 @@ async function run() {
     const cartCollection = client.db("bistro").collection("cart");
     const userCollection = client.db("bistro").collection("user");
 
-    app.get("/users", async (req, res) => {
+    /********
+     * 1. use JWT token verify
+     * 2. use verify admin middleware
+       3. don't show secure link to those who should not see this link 
+     *
+     */
+
+    //Warning: use Verifytoken Before using verifyAdmin
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      if (user?.role !== "admin") {
+        return res
+          .status(403)
+          .send({ error: true, message: "forbidden access" });
+      }
+      next();
+    };
+
+    app.get("/users", verifyJWT, verifyAdmin, async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -110,6 +130,18 @@ async function run() {
       const result = await reviewCollection.find().toArray();
       res.send(result);
     });
+    //check admin api
+    app.get("/user/admin/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+      if (req.decoded.email !== email) {
+        res.send({ admin: false });
+      }
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const result = { admin: user?.role === "admin" };
+      res.send(result);
+    });
+
     //cart collection api
     app.get("/carts", verifyJWT, async (req, res) => {
       const email = req.query.email;
