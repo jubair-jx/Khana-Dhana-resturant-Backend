@@ -1,8 +1,10 @@
 const express = require("express");
 const app = express();
+require("dotenv").config();
 const cors = require("cors");
 const PORT = process.env.PORT || 5000;
-require("dotenv").config();
+
+const jwt = require("jsonwebtoken");
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
@@ -13,6 +15,29 @@ app.use(express.json());
 app.get("/", (req, res) => {
   res.send("Bruh Your Bistroo Server  is Running");
 });
+
+const verifyJWT = (req, res, next) => {
+  const authorization = req.headers.authorization;
+  console.log(authorization);
+  if (!authorization) {
+    return res
+      .status(401)
+      .send({ error: true, message: "unauthorized access" });
+  }
+  // bearer token
+  const token = authorization.split(" ")[1];
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res
+        .status(401)
+        .send({ error: true, message: "unauthorized access" });
+    }
+    req.decoded = decoded;
+    console.log("decoded", decoded);
+    next();
+  });
+};
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.udnr6tc.mongodb.net/?retryWrites=true&w=majority`;
 
@@ -40,8 +65,18 @@ async function run() {
       res.send(result);
     });
 
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      console.log(user);
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "1hr",
+      });
+      console.log(token);
+      res.send({ token });
+    });
+
     //user patch api
-    app.patch("/user/admin/:id", async (req, res) => {
+    app.patch("/users/admin/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const updateOne = {
@@ -56,14 +91,14 @@ async function run() {
     //user api
     app.post("/user", async (req, res) => {
       const user = req.body;
-      console.log(user);
+      // console.log(user);
       const query = { email: user.email };
       const existUser = await userCollection.findOne(query);
       console.log("exist", existUser);
       if (existUser) {
         return res.send({ message: "User Already exist" });
       }
-      const result = userCollection.insertOne(user);
+      const result = await userCollection.insertOne(user);
       res.send(result);
     });
 
@@ -75,12 +110,21 @@ async function run() {
       const result = await reviewCollection.find().toArray();
       res.send(result);
     });
-    app.get("/carts", async (req, res) => {
+    //cart collection api
+    app.get("/carts", verifyJWT, async (req, res) => {
       const email = req.query.email;
-      console.log(email);
+      console.log("Cart Mail", email);
       if (!email) {
         res.send([]);
       }
+
+      const decodedEmail = req.decoded.email;
+      if (email !== decodedEmail) {
+        return res
+          .status(403)
+          .send({ error: true, message: "porviden access" });
+      }
+
       const query = { email: email };
       const result = await cartCollection.find(query).toArray();
       res.send(result);
