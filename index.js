@@ -3,6 +3,7 @@ const app = express();
 require("dotenv").config();
 const cors = require("cors");
 const PORT = process.env.PORT || 5000;
+const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
 
 const jwt = require("jsonwebtoken");
 
@@ -58,12 +59,13 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    client.connect();
+    await client.connect();
 
     const menuCollection = client.db("bistro").collection("menu");
     const reviewCollection = client.db("bistro").collection("review");
     const cartCollection = client.db("bistro").collection("cart");
     const userCollection = client.db("bistro").collection("user");
+    const paymentCollection = client.db("bistro").collection("payment");
 
     /********
      * 1. use JWT token verify
@@ -96,7 +98,7 @@ async function run() {
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
         expiresIn: "1hr",
       });
-      console.log(token);
+      // console.log(token);
       res.send({ token });
     });
 
@@ -119,7 +121,7 @@ async function run() {
       // console.log(user);
       const query = { email: user.email };
       const existUser = await userCollection.findOne(query);
-      console.log("exist", existUser);
+      // console.log("exist", existUser);
       if (existUser) {
         return res.send({ message: "User Already exist" });
       }
@@ -193,6 +195,34 @@ async function run() {
       const result = await cartCollection.insertOne(body);
       res.send(result);
     });
+
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { price } = req.body;
+      if (price <= 0) {
+        return res.send({});
+      }
+      const amount = parseFloat(price * 100);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    app.post("/payment", async (req, res) => {
+      const body = req.body;
+      const result = await paymentCollection.insertOne(body);
+
+      const query = {
+        _id: { $in: body.cartItems.map((id) => new ObjectId(id)) },
+      };
+      const deleteResult = await cartCollection.deleteMany(query);
+      res.send({ result, deleteResult });
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
