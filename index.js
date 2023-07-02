@@ -201,7 +201,7 @@ async function run() {
       if (price <= 0) {
         return res.send({});
       }
-      const amount = parseFloat(price * 100);
+      const amount = parseInt(price * 100);
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
         currency: "usd",
